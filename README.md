@@ -1,2 +1,3 @@
-# CSV
-Comma Separated Values
+# Comma Separated Values
+
+Several experiments on CSV data format.
