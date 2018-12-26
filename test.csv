@@ -1,0 +1,31 @@
+1
+"2"
+ "3"
+ "4"
+"5", "a" 
+"""6"""
+"""7""","a"
+8,b,c
+9,"",c
+10,,c
+
+11,,
+12,"b c","bSPACEc"
+13,"C1","C2","C3","C4","C5"
+14,"","""",blank-comma-quote
+15,"  ",two-spaces
+"16"," ","single space followed by embedded,commas"
+17, "split
+this
+line","And
+this
+too"
+18,"next record has both embedded newline and dquote"
+"a
+""b""","c"
+19,"esctab","\t",a
+20,"embedded tab","	",d
+21,"foo\\nbar"
+22,"b,c\
+d"
+100,""this line is invalid and should result in an error condition and/or STDERR message"

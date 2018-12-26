@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
 #   define put(c)       putc((c), stdout)
 #   define error(msg)   die(msg,state,nr,nf,nl,nc)
 #   define next_field   do { put(FS); ++nf; state=START; } while (0)
-#   define next_record  do { put(RS); nf=1; nc=0; ++nr; state=START; } while (0)
+#   define next_record  do { put(RS); nf=1; ++nr; state=START; } while (0)
 
     state=START;
     while (get(c)) {

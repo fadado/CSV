@@ -2,10 +2,11 @@
 ,
 ,,
 1,2
-lala,lele
+lala,lele,ñañe
 "a",b,c
 """quoted""",yes
 "",empty string
 "embedded
 NL",
 a e i o u,2
+"\slash\"
