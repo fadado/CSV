@@ -10,6 +10,29 @@
 
 #include "csv2json.h"
 
+/* Design considerations when parsing input CSV:
+    - Unexpected control characters (including CR) are ignored.
+    - Empty fields give JSON empty strings ("").
+    - Empty lines produce null records: `null`.
+    - In RFC4180 compliant mode spaces around quoted fields raise error.
+    - CRLF or LF alone are both accepted as new line separators.
+    - Backslash is *not* an escape.
+ */
+
+/* Compile time options */
+#define NO 0
+#define YES 1
+#define RFC4180_COMPLIANT                   NO
+
+#if RFC4180_COMPLIANT
+#define IGNORE_BLANKS_BEFORE_FIELDS         NO
+#define IGNORE_BLANKS_AFTER_QUOTED_FIELDS   NO
+#else
+/* Allow extensions at your will */
+#define IGNORE_BLANKS_BEFORE_FIELDS         YES
+#define IGNORE_BLANKS_AFTER_QUOTED_FIELDS   YES
+#endif
+
 /* New control structure replacing low-level `switch` */
 #define select      switch
 #define when        break; case
@@ -21,8 +44,9 @@ const char  *OPEN_BRACKET   = "[",
             *FS             = "\",",
             *RS             = "\"]\n",
             *NL             = "\\n",
+            *HT             = "\\t",
             *ESCAPED_DQ     = "\\\"",
-            *SINGLETON      = "[\"\"]\n";
+            *EMPTY          = "null\n";
 
 /* FSM states */
 typedef enum {
@@ -35,13 +59,13 @@ enum { SUCCESS=0, FAILURE=1 };
 /* Store error description */
 static CSV_ERROR _csv_error;
 
-CSV_ERROR *csv_error(void)
+extern CSV_ERROR *csv_error(void)
 {
     return &_csv_error;
 }
 
 /* CSV => LD-JSON (https://en.wikipedia.org/wiki/JSON_streaming#Line-delimited_JSON) */
-int csv2json(FILE *input, FILE *output)
+extern int csv2json(FILE *input, FILE *output)
 {
     int nr=1, nf=1, nl=1, nc=0; /* number of records, fields, lines, chars */
     char *errmsg;
@@ -66,25 +90,37 @@ int csv2json(FILE *input, FILE *output)
         /* FSM */
         select (state) {
             when StartRecord:
-                print(OPEN_BRACKET);
-                state=StartField;
-                goto FIELD;
+                select(c) {
+                    when '\n':  ++nl; ++nr; ++nc; print(EMPTY);
+                    otherwise:
+                        print(OPEN_BRACKET);
+                        state=StartField;
+                        goto FIELD;
+                }
             when StartField:
             FIELD:
+#if IGNORE_BLANKS_BEFORE_FIELDS
                 if (isblank(c)) continue;
-                print(DOUBLE_QUOTE);
+#endif
                 select(c) {
-                    when ',':   next_field;
-                    when '\n':  ++nl; next_record;
-                    when '"':   state=Quoted; 
-                    when '\\':  state=Plain; put(c); put(c);
-                    otherwise:  state=Plain; put(c);
+                    when ',':   print(DOUBLE_QUOTE); next_field;
+                    when '\n':  print(DOUBLE_QUOTE); ++nl; next_record;
+                    /* TODO: empty fields as null?
+                    when ',':   ++nf; if (last=='\n') print("[null,"); else print("null,");
+                    when '\n':  if (last == ',') { ++nl; ++nf; print("null]\n"); } else { print(DOUBLE_QUOTE); ++nl; next_record; }
+                    */
+                    when '"':   print(DOUBLE_QUOTE); state=Quoted; 
+                    when '\\':  print(DOUBLE_QUOTE); state=Plain; put(c); put(c);
+                    when '\t':  print(DOUBLE_QUOTE); state=Plain; print(HT);
+                    otherwise:  print(DOUBLE_QUOTE); state=Plain; put(c);
                 }
             when Plain:
                 select(c) {
                     when ',':   next_field;
                     when '\n':  ++nl; next_record;
+                    when '"':   print(ESCAPED_DQ);
                     when '\\':  put(c); put(c);
+                    when '\t':  print(HT);
                     otherwise:  put(c);
                 }
             when Quoted:
@@ -92,10 +128,13 @@ int csv2json(FILE *input, FILE *output)
                     when '\n':  ++nl; print(NL);
                     when '"':   state=Closing;
                     when '\\':  put(c); put(c);
+                    when '\t':  print(HT);
                     otherwise:  put(c);
                 }
             when Closing:
+#if IGNORE_BLANKS_AFTER_QUOTED_FIELDS
                 if (isblank(c)) continue;
+#endif
                 select(c) {
                     when ',':   next_field;
                     when '\n':  ++nl; next_record;
@@ -105,7 +144,7 @@ int csv2json(FILE *input, FILE *output)
             }
     }
     select (state) {
-        when StartRecord: if (nc == 0) print(SINGLETON);
+        when StartRecord: if (nc == 0) print(EMPTY);
         when StartField: print(DOUBLE_QUOTE); print(RS);
         when Plain: print(RS);
         when Closing: print(RS);
@@ -115,7 +154,15 @@ int csv2json(FILE *input, FILE *output)
     return SUCCESS;
 
 ONERROR: 
+    select (state) {
+        when StartRecord: if (nc == 0) print(EMPTY);
+        when StartField: print(DOUBLE_QUOTE); print(RS);
+        when Plain: print(RS);
+        when Closing: print(RS);
+        when Quoted: /* ignore */;
+    }
     fflush(output);
+    /* Report error */
     _csv_error.errmsg = errmsg;
     _csv_error.nr = nr;
     _csv_error.nf = nf;
@@ -128,6 +175,8 @@ ONERROR:
 /* Delete next lines or define NO_MAIN_ENTRY_POINT to remove the function `main` */
 #ifndef NO_MAIN_ENTRY_POINT
 
+#include <assert.h>
+
 int main(void)
 {
     static char buffer1[BUFSIZ], buffer2[BUFSIZ];
@@ -135,10 +184,16 @@ int main(void)
     setbuf(stdin, buffer1);
     setbuf(stdout, buffer2);
 
-    if (csv2json(stdin, stdout) != SUCCESS) {
+    CSV_ERROR *e = csv_error();
+    assert(e->errmsg == NULL);
+
+    if (csv2json(stdin, stdout)) {
+        assert(e->errmsg != NULL);
+
         const char* fmt="\ncsv2json: %s (record: %d; field: %d; line: %d; character: %d)\n";
         CSV_ERROR *e = csv_error();
         fprintf(stderr, fmt, e->errmsg, e->nr, e->nf, e->nl, e->nc);
+
         return FAILURE;
     }
     return SUCCESS;
