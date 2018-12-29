@@ -14,6 +14,7 @@
     - Unexpected control characters (including CR) are ignored.
     - Empty fields give JSON empty strings ("").
     - Empty lines produce null records: `null`.
+    - Empty fields produce null values.
     - In RFC4180 compliant mode spaces around quoted fields raise error.
     - CRLF or LF alone are both accepted as new line separators.
     - Backslash is *not* an escape.
@@ -22,16 +23,21 @@
 /* Compile time options */
 #define NO 0
 #define YES 1
-#define RFC4180_COMPLIANT                   NO
+
+#define RFC4180_COMPLIANT                       NO
 
 #if RFC4180_COMPLIANT
-#define IGNORE_BLANKS_BEFORE_FIELDS         NO
-#define IGNORE_BLANKS_AFTER_QUOTED_FIELDS   NO
+#   define IGNORE_BLANKS_BEFORE_FIELDS          NO
+#   define IGNORE_BLANKS_AFTER_QUOTED_FIELDS    NO
+#   define ALLOW_EMPTY_LINES                    NO
 #else
-/* Allow extensions at your will */
-#define IGNORE_BLANKS_BEFORE_FIELDS         YES
-#define IGNORE_BLANKS_AFTER_QUOTED_FIELDS   YES
+/* Edit to allow extensions at your will */
+#   define IGNORE_BLANKS_BEFORE_FIELDS          YES
+#   define IGNORE_BLANKS_AFTER_QUOTED_FIELDS    YES
+#   define ALLOW_EMPTY_LINES                    YES
 #endif
+/* Choose between `[]` (NO) or `null` (YES) for empty lines */
+#define EMPTY_LINES_AS_NULLS                    YES
 
 /* New control structure replacing low-level `switch` */
 #define select      switch
@@ -46,7 +52,16 @@ const char  *OPEN_BRACKET   = "[",
             *NL             = "\\n",
             *HT             = "\\t",
             *ESCAPED_DQ     = "\\\"",
-            *EMPTY          = "null\n";
+#if ALLOW_EMPTY_LINES
+#   if EMPTY_LINES_AS_NULLS
+            *EMPTY          = "null\n",
+#   else   /* empty array */
+            *EMPTY          = "[]\n",
+#   endif
+#endif
+            *NULL_FIELD1    = "[null,",
+            *NULL_FIELD     = "null,",
+            *NULL_FIELDn    = "null]\n";
 
 /* FSM states */
 typedef enum {
@@ -68,7 +83,7 @@ extern CSV_ERROR *csv_error(void)
 extern int csv2json(FILE *input, FILE *output)
 {
     int nr=1, nf=1, nl=1, nc=0; /* number of records, fields, lines, chars */
-    char *errmsg;
+    char *errmsg = NULL;
     register int c;
     register State state;
 
@@ -76,7 +91,7 @@ extern int csv2json(FILE *input, FILE *output)
 #   define get(c)       (((c)=getc(input)) != EOF)
 #   define put(c)       putc((c), output)
 #   define print(s)     fputs((s), output)
-#   define error(s)     do { errmsg=(s); goto ONERROR; } while (0)
+#   define error(s)     do { errmsg=(s); goto EXIT; } while (0)
 #   define next_field   do { print(FS); ++nf; state=StartField; } while (0)
 #   define next_record  do { print(RS); nf=1; ++nr; state=StartRecord; } while (0)
 
@@ -91,11 +106,13 @@ extern int csv2json(FILE *input, FILE *output)
         select (state) {
             when StartRecord:
                 select(c) {
-                    when '\n':  ++nl; ++nr; ++nc; print(EMPTY);
-                    otherwise:
-                        print(OPEN_BRACKET);
-                        state=StartField;
-                        goto FIELD;
+#if ALLOW_EMPTY_LINES
+                    when '\n':  ++nl; ++nr; print(EMPTY);
+#else
+                    when '\n':  ++nl; error("unexpected empty line");
+#endif
+                    when ',':   ++nf; print(NULL_FIELD1); state=StartField;
+                    otherwise: print(OPEN_BRACKET); state=StartField; goto FIELD;
                 }
             when StartField:
             FIELD:
@@ -103,12 +120,8 @@ extern int csv2json(FILE *input, FILE *output)
                 if (isblank(c)) continue;
 #endif
                 select(c) {
-                    when ',':   print(DOUBLE_QUOTE); next_field;
-                    when '\n':  print(DOUBLE_QUOTE); ++nl; next_record;
-                    /* TODO: empty fields as null?
-                    when ',':   ++nf; if (last=='\n') print("[null,"); else print("null,");
-                    when '\n':  if (last == ',') { ++nl; ++nf; print("null]\n"); } else { print(DOUBLE_QUOTE); ++nl; next_record; }
-                    */
+                    when ',':   ++nf; print(NULL_FIELD);
+                    when '\n':  ++nl; print(NULL_FIELDn); state=StartRecord;
                     when '"':   print(DOUBLE_QUOTE); state=Quoted; 
                     when '\\':  print(DOUBLE_QUOTE); state=Plain; put(c); put(c);
                     when '\t':  print(DOUBLE_QUOTE); state=Plain; print(HT);
@@ -143,25 +156,23 @@ extern int csv2json(FILE *input, FILE *output)
                 }
             }
     }
+EXIT: 
     select (state) {
-        when StartRecord: if (nc == 0) print(EMPTY);
-        when StartField: print(DOUBLE_QUOTE); print(RS);
-        when Plain: print(RS);
-        when Closing: print(RS);
-        when Quoted: error("unexpected end of quoted field");
-    }
-    fflush(output);
-    return SUCCESS;
-
-ONERROR: 
-    select (state) {
-        when StartRecord: if (nc == 0) print(EMPTY);
-        when StartField: print(DOUBLE_QUOTE); print(RS);
+        when StartRecord:
+#if ALLOW_EMPTY_LINES
+            if (nc == 0) print(EMPTY);
+#else
+            errmsg = "unexpected empty line";
+#endif
+        when StartField: print(NULL_FIELDn);
         when Plain: print(RS);
         when Closing: print(RS);
         when Quoted: /* ignore */;
     }
     fflush(output);
+    if (errmsg == NULL) {    /* No errors */
+        return SUCCESS;
+    }
     /* Report error */
     _csv_error.errmsg = errmsg;
     _csv_error.nr = nr;
