@@ -9,23 +9,23 @@
 9,"",c
 10,,c
 
-11,,
-12,"b c","bSPACEc"
-13,"C1","C2","C3","C4","C5"
-14,"","""",blank-comma-quote
-15,"  ",two-spaces
-"16"," ","single space followed by embedded,commas"
-17, "split
+12,,
+13,"b c","bSPACEc"
+14,"C1","C2","C3","C4","C5"
+15,"","""",blank-comma-quote
+16,"  ",two-spaces
+"17"," ","single space followed by embedded,commas"
+18, "split
 this
 line","And
 this
 too"
-18,"next record has both embedded newline and dquote"
-"a
+19,"next record has both embedded newline and dquote"
+20,"a
 ""b""","c"
-19,"esctab","\t",a
-20,"embedded tab","	",d
-21,"foo\\nbar"
-22,"b,c\
+21,"esctab","\t",a
+22,"embedded tab","	",d
+23,"foo\\nbar"
+24,"b,c\
 d"
 100,""this line is invalid and should result in an error condition and/or STDERR message"
