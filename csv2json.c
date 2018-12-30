@@ -121,10 +121,10 @@ extern int csv2json(FILE *input, FILE *output)
 #endif
                     when ',':   ++nf; print(NULL_FIELD1); go(StartField);
                     otherwise:  print(OPEN_BRACKET); go(StartField);
-                                goto FIELD; /* Direct transition to StartField */
+                                goto StartField; /* Direct transition to StartField */
                 }
             when StartField:
-            FIELD:
+            StartField:
 #if IGNORE_BLANKS_BEFORE_FIELDS
                 if (isblank(c)) continue;
 #endif
@@ -195,7 +195,7 @@ EXIT:
 }
 
 /* Change next `ifndef` to `ifdef` to remove the function `main` */
-#ifndef __MAIN__
+#ifndef IGNORE_MAIN
 
 int main(void)
 {

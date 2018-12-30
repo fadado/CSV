@@ -1,8 +1,9 @@
 *.o
-csv2txt
-csv2json
-compliant
-extended
-csv-initial-version
-csv
-students.csv
+*.log
+/csv2txt
+/csv2json
+/compliant
+/extended
+/csv-initial-version
+/csv
+/students.csv
