@@ -26,10 +26,9 @@
 #define NO  0
 #define YES 1
 
+#ifndef RFC4180_COMPLIANT
 #define RFC4180_COMPLIANT       NO
-
-/* Choose between `[]` (NO) or `null` (YES) for empty lines */
-#define EMPTY_LINES_AS_NULLS    YES
+#endif
 
 /* Strict mode? */
 #if RFC4180_COMPLIANT
@@ -41,6 +40,11 @@
 #   define IGNORE_BLANKS_BEFORE_FIELDS          YES
 #   define IGNORE_BLANKS_AFTER_QUOTED_FIELDS    YES
 #   define ALLOW_EMPTY_LINES                    YES
+#endif
+
+/* Choose between `[]` (NO) or `null` (YES) for empty lines */
+#ifndef EMPTY_LINES_AS_NULLS
+#define EMPTY_LINES_AS_NULLS    YES
 #endif
 
 /* New control structure replacing low-level `switch` */

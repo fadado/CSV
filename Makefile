@@ -1,8 +1,12 @@
 # Makefile
 
-all: csv2json csv2txt
+all: compliant extended
 
-csv2json: csv2json.c csv2json.h
-	$(CC) -Wall $< -o $@
+extended: csv2json.c csv2json.h
+	$(CC) -Wall -DRFC4180_COMPLIANT=0 $< -o $@
+
+compliant: csv2json.c csv2json.h
+	$(CC) -Wall -DRFC4180_COMPLIANT=1 $< -o $@
+
 clean:
-	rm -f csv2json csv2txt initial-version
+	rm -f compliant extended
