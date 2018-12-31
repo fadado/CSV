@@ -26,8 +26,12 @@
 #define NO  0
 #define YES 1
 
-#ifndef RFC4180_COMPLIANT
-#define RFC4180_COMPLIANT       NO
+/* Extended or compliant mode? */
+#ifdef RFC4180_COMPLIANT
+#   undef RFC4180_COMPLIANT
+#   define RFC4180_COMPLIANT       YES
+#else
+#   define RFC4180_COMPLIANT       NO
 #endif
 
 /* Strict mode? */
@@ -42,10 +46,8 @@
 #   define ALLOW_EMPTY_LINES                    YES
 #endif
 
-/* Choose between `[]` (NO) or `null` (YES) for empty lines */
-#ifndef EMPTY_LINES_AS_NULLS
+/* `null` (YES) or `[]` (NO) for empty lines? */
 #define EMPTY_LINES_AS_NULLS    YES
-#endif
 
 /* New control structure replacing low-level `switch` */
 #define select      switch
@@ -60,13 +62,13 @@ const char  *OPEN_BRACKET   = "[",
             *ESCAPED_NL     = "\\n",
             *ESCAPED_HT     = "\\t",
             *ESCAPED_DQ     = "\\\"",
-#if ALLOW_EMPTY_LINES
-#   if EMPTY_LINES_AS_NULLS
+#   if ALLOW_EMPTY_LINES
+#       if EMPTY_LINES_AS_NULLS
             *EMPTY          = "null\n",
-#   else   /* empty array */
+#       else   /* empty array */
             *EMPTY          = "[]\n",
+#       endif
 #   endif
-#endif
             *NULL_FIELD1    = "[null,",
             *NULL_FIELD     = "null,",
             *NULL_FIELDn    = "null]\n";
@@ -114,20 +116,20 @@ extern int csv2json(FILE *input, FILE *output)
             when StartRecord:
                 assert(nf == 1);
                 select(c) {
-#if ALLOW_EMPTY_LINES
+#               if ALLOW_EMPTY_LINES
                     when '\n':  ++nl; ++nr; print(EMPTY);
-#else
+#               else
                     when '\n':  ++nl; error("unexpected empty line");
-#endif
+#               endif
                     when ',':   ++nf; print(NULL_FIELD1); go(StartField);
                     otherwise:  print(OPEN_BRACKET); go(StartField);
                                 goto StartField; /* Direct transition to StartField */
                 }
             when StartField:
             StartField:
-#if IGNORE_BLANKS_BEFORE_FIELDS
+#           if IGNORE_BLANKS_BEFORE_FIELDS
                 if (isblank(c)) continue;
-#endif
+#           endif
                 select(c) {
                     when ',':   ++nf; print(NULL_FIELD);
                     when '\n':  ++nl; ++nr; nf=1; print(NULL_FIELDn); go(StartRecord);
@@ -154,9 +156,9 @@ extern int csv2json(FILE *input, FILE *output)
                     otherwise:  put(c);
                 }
             when Closing:
-#if IGNORE_BLANKS_AFTER_QUOTED_FIELDS
+#           if IGNORE_BLANKS_AFTER_QUOTED_FIELDS
                 if (isblank(c)) continue;
-#endif
+#           endif
                 select(c) {
                     when ',':   ++nf; print(COMMA); go(StartField);
                     when '\n':  ++nl; ++nr; nf=1; print(CLOSE_BRACKET); go(StartRecord);
@@ -169,11 +171,11 @@ EXIT:
     select (state) {
         when StartRecord:
             if (nc == 0)
-#if ALLOW_EMPTY_LINES
+#       if ALLOW_EMPTY_LINES
                 print(EMPTY);
-#else
+#       else
                 errmsg = "unexpected empty input";
-#endif
+#       endif
         when StartField:    print(NULL_FIELDn);
         when Plain:         print(CLOSE_BRACKET);
         when Closing:       print(CLOSE_BRACKET);
@@ -181,8 +183,9 @@ EXIT:
                             errmsg = "unexpected end of field";
     }
     fflush(output);
+
     if (errmsg == NULL)
-        return 0; /* No errors */
+        return 0; /* no errors */
 
     /* Report error */
     _csv_error.errmsg = errmsg;

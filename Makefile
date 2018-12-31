@@ -3,10 +3,10 @@
 all: compliant extended
 
 extended: csv2json.c csv2json.h
-	$(CC) -Wall -DRFC4180_COMPLIANT=0 $< -o $@
+	$(CC) -Wall $< -o $@
 
 compliant: csv2json.c csv2json.h
-	$(CC) -Wall -DRFC4180_COMPLIANT=1 $< -o $@
+	$(CC) -Wall -DRFC4180_COMPLIANT $< -o $@
 
 clean:
 	@rm -f compliant extended tests/*/output/*
