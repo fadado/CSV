@@ -15,11 +15,13 @@
 /* Design considerations when parsing input CSV:
  *  - Backslash is *not* an escape.
  *  - CRLF or LF alone are both accepted as new line separators.
- *  - Empty fields give JSON null values (`null`) *or* empty strings ("").
+ *  - Empty fields can give JSON null values (`null`) *or* empty strings ("").
  *  - In RFC4180 compliant mode spaces around quoted fields raise error.
- *  - Unexpected control characters (including CR) are ignored.
+ *  - Unexpected control characters
  *  - In case of error the last record generated is "correct" but perhaps
  *    incomplete and/or wrong.
+ *  - Control characters are ignored, except LF, HT, and CR if inside
+ *    quoted fields.
  */
 
 /* Compile time options */
@@ -60,6 +62,7 @@ const char  *OPEN_BRACKET   = "[",
             *CLOSE_BRACKET  = "\"]\n",
             *DOUBLE_QUOTE   = "\"",
             *ESCAPED_NL     = "\\n",
+            *ESCAPED_CR     = "\\r",
             *ESCAPED_HT     = "\\t",
             *ESCAPED_DQ     = "\\\"",
 #   if ALLOW_EMPTY_LINES
@@ -107,8 +110,11 @@ extern int csv2json(FILE *input, FILE *output)
     while (get(c)) {
         ++nc; /* accumulated count of all characters read */
 
-        /* ignore '\r' and other control characters; accept only '\n' and '\t' */
-        if (iscntrl(c) && c != '\n' && c != '\t')
+        /* ignore some control characters */
+        if (iscntrl(c)          /* all controls... */
+                && c != '\n'    /* except LF */
+                && c != '\t'    /* except HT */
+                && (c == '\r' && state != Quoted)) /* and except CR inside quoted fields */
             continue;
 
         /* FSM */
@@ -150,6 +156,7 @@ extern int csv2json(FILE *input, FILE *output)
             when Quoted:
                 select(c) {
                     when '\n':  ++nl; print(ESCAPED_NL);
+                    when '\r':  print(ESCAPED_CR);
                     when '"':   go(Closing);
                     when '\\':  put(c); put(c);
                     when '\t':  print(ESCAPED_HT);
