@@ -2,14 +2,18 @@
 
 all: compliant extended
 
+CFLAGS=-Wall -Wextra -Wpedantic
+
 extended: csv2json.c csv2json.h
-	$(CC) -Wall $< -o $@
+	$(CC) $(CFLAGS) $< -o $@
 
 compliant: csv2json.c csv2json.h
-	$(CC) -Wall -DRFC4180_COMPLIANT $< -o $@
+	$(CC) $(CFLAGS) -DRFC4180_COMPLIANT $< -o $@
 
 clean:
 	@rm -f compliant extended tests/*/output/*
+
+build: clean all
 
 #########################################################################
 # Tests framework

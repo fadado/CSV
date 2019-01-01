@@ -1,2 +1,2 @@
 
-csv2json: unexpected empty input (record: 1; field: 1; line: 1; character: 0)
+csv2json: unexpected empty input (record: 0; field: 0; line: 0; character: 0)
