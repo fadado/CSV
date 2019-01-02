@@ -101,12 +101,35 @@ extern int csv2json(FILE *input, FILE *output)
 #   define get(c)       (((c)=getc(input)) != EOF)
 #   define put(c)       putc((c), output)
 #   define print(s)     fputs((s), output)
+#   define eof          (c==EOF)
 #   define error(s)     errmsg=(s); goto EXIT
 #   define onerror      (errmsg!=NULL)
 #   define imply(a,c)   (!(a) || (c))
 
+    /* Transition table for the FSM (extended mode):
+     *
+     *         |R      |F      |P      |Q      |C
+     *  =======|=======|=======|=======|=======|=======
+     *  LF     |R      |R      |R      |Q      |R
+     *  ,      |F      |F      |F      |...    |F
+     *  "      |...    |Q      |P      |C      |Q
+     *  \      |...    |P      |P      |Q      |...
+     *  HT     |...    |P      |P      |Q      |...
+     *  CR     |       |       |       |Q      |
+     *  ...    |=> F   |P      |P      |Q      |!
+     *  EOF    |$      |$      |$      |!      |$
+     *  ===============================================
+     *
+     *  States: R=StartRecord, F=StartField, P=Plain, Q=Quoted, C=Closing
+     *  Legend: $=Stop; !=Halt; ...=default transition;
+     *          => =direct transition; without reading new input;
+     *             =empty cell means ignored input;
+     *  Initial state: StartRecord
+     */
+
+    /* Initial state */
     go(StartRecord);
-    while (get(c)) {
+    while (get(c)) { /* exit loop at EOF or error */
 #   ifndef NDEBUG
         /* helpers for loop invariants */
         old_nr=nr; old_nf=nf; old_nl=nl; old_nc=nc;
@@ -121,7 +144,7 @@ extern int csv2json(FILE *input, FILE *output)
                 && (c == '\r' && state != Quoted)) /* and except CR inside quoted fields */
             goto NEXT;
 
-        /* FSM */
+        /* Transition table */
         switch (state) {
             when StartRecord:
                 assert(nf == 1);
@@ -189,11 +212,12 @@ NEXT:
 #   endif
     }
 EXIT:
-    assert(imply(onerror, nc!=0 && (state==StartRecord || state==Closing)));
+    assert(imply(onerror, nc!=0));
+    assert(imply(onerror, state==Closing || (!ALLOW_EMPTY_LINES && state==StartRecord)));
+    assert(imply(!eof, state==Closing));
     switch (state) {
         when StartRecord:
             assert(imply(nc!=0, old_c=='\n'));
-            assert(c==EOF);
             if (nc == 0) {
                 assert(nl==1 && nf==1 && nr==1);
 #           if ALLOW_EMPTY_LINES
@@ -204,15 +228,12 @@ EXIT:
 #           endif
             }
         when StartField:    print(NULL_FIELDn);
-                            assert(c==EOF);
         when Plain:         print(CLOSE_BRACKET);
-                            assert(c==EOF);
                             assert(old_c!='\n');
         when Quoted:        print(CLOSE_BRACKET);
-                            assert(c==EOF);
                             errmsg = "unexpected end of field";
         when Closing:       print(CLOSE_BRACKET);
-                            assert((c==EOF) != onerror);
+                            assert(eof != onerror);
                             assert(old_c!='\n');
     }
     fflush(output);
