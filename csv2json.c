@@ -46,7 +46,7 @@
 /* `null` or `[]` for empty lines? */
 #define EMPTY_LINES_AS_NULLS    YES
 
-/* New control structure to enhance low-level `switch` */
+/* New control structures to enhance low-level `switch` */
 #define when        break; case
 #define otherwise   break; default
 
@@ -89,11 +89,11 @@ extern CSV_ERROR *csv_error(void)
 extern int csv2json(FILE *input, FILE *output)
 {
     int nr=1, nf=1, nl=1, nc=0; /* Count of records, fields, lines, chars; */
-    char *errmsg=NULL;
+    const char *errmsg=NULL;
     register int c;
     register State state;
 #ifndef NDEBUG
-    int old_c=EOF, old_nr, old_nf, old_nl, old_nc;
+    int old_c, old_nr, old_nf, old_nl, old_nc;
 #endif
 
     /* pseudo inline local functions */
@@ -101,10 +101,10 @@ extern int csv2json(FILE *input, FILE *output)
 #   define get(c)       (((c)=getc(input)) != EOF)
 #   define put(c)       putc((c), output)
 #   define print(s)     fputs((s), output)
-#   define eof          (c==EOF)
 #   define error(s)     errmsg=(s); goto EXIT
-#   define onerror      (errmsg!=NULL)
 #   define imply(a,c)   (!(a) || (c))
+#   define eof          (c==EOF)
+#   define onerror      (errmsg!=NULL)
 
     /* Transition table for the FSM (extended mode):
      *
@@ -122,7 +122,7 @@ extern int csv2json(FILE *input, FILE *output)
      *
      *  States: R=StartRecord, F=StartField, P=Plain, Q=Quoted, C=Closing
      *  Legend: $=Stop; !=Halt; ...=default transition;
-     *          => =direct transition; without reading new input;
+     *          => =direct transition, without reading new input;
      *             =empty cell means ignored input;
      *  Initial state: StartRecord
      */
@@ -142,12 +142,10 @@ extern int csv2json(FILE *input, FILE *output)
                 && c != '\n'    /* except LF, */
                 && c != '\t'    /* except HT, */
                 && (c == '\r' && state != Quoted)) /* and except CR inside quoted fields */
-            goto NEXT;
-
-        /* Transition table */
-        switch (state) {
+        {;} /* then ignore input */
+        else T_T: switch (state) { /* else filter through the transition table */
             when StartRecord:
-                assert(nf == 1);
+                assert(nf==1);
                 switch (c) {
 #               if ALLOW_EMPTY_LINES
                     when '\n':  ++nl; ++nr; print(EMPTY);
@@ -156,12 +154,11 @@ extern int csv2json(FILE *input, FILE *output)
 #               endif
                     when ',':   ++nf; print(NULL_FIELD1); go(StartField);
                     otherwise:  print(OPEN_BRACKET); go(StartField);
-                                goto StartField; /* direct transition */
+                                goto T_T; /* direct transition to StartField */
                 }
             when StartField:
-            StartField:
 #           if IGNORE_BLANKS_BEFORE_FIELDS
-                if (isblank(c)) goto NEXT;
+                if (isblank(c)) {;} else
 #           endif
                 switch (c) {
                     when ',':   ++nf; print(NULL_FIELD);
@@ -191,7 +188,7 @@ extern int csv2json(FILE *input, FILE *output)
                 }
             when Closing:
 #           if IGNORE_BLANKS_AFTER_QUOTED_FIELDS
-                if (isblank(c)) goto NEXT;
+                if (isblank(c)) {;} else
 #           endif
                 switch (c) {
                     when ',':   ++nf; print(COMMA); go(StartField);
@@ -199,8 +196,8 @@ extern int csv2json(FILE *input, FILE *output)
                     when '"':   print(ESCAPED_DQ); go(Quoted); 
                     otherwise:  error("unexpected double quote");
                 }
-        }
-NEXT:
+        } /* switch (state) */
+
         /* loop invariants */
         assert(old_nc+1==nc);
         assert(imply(c=='\n', old_nl+1==nl));
@@ -229,12 +226,10 @@ EXIT:
             }
         when StartField:    print(NULL_FIELDn);
         when Plain:         print(CLOSE_BRACKET);
-                            assert(old_c!='\n');
         when Quoted:        print(CLOSE_BRACKET);
                             errmsg = "unexpected end of field";
         when Closing:       print(CLOSE_BRACKET);
                             assert(eof != onerror);
-                            assert(old_c!='\n');
     }
     fflush(output);
 
