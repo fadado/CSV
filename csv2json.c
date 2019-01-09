@@ -59,13 +59,11 @@ const char  *OPEN_BRACKET   = "[",
             *ESCAPED_CR     = "\\r",
             *ESCAPED_HT     = "\\t",
             *ESCAPED_DQ     = "\\\"",
-#   if ALLOW_EMPTY_LINES
 #       if EMPTY_LINES_AS_NULLS
             *EMPTY          = "null\n",
 #       else   /* empty array */
             *EMPTY          = "[]\n",
 #       endif
-#   endif
             *NULL_FIELD1    = "[null,",
             *NULL_FIELD     = "null,",
             *NULL_FIELDn    = "null]\n";
@@ -137,30 +135,30 @@ extern int csv2json(FILE *input, FILE *output)
         /* accumulated count of all characters read */
         ++nc;
 
-        /* ignore some control characters */
-        if (iscntrl(c)          /* all controls... */
+        /* Process input: */
+        if (iscntrl(c)          /* if is a control... */
                 && c != '\n'    /* except LF, */
                 && c != '\t'    /* except HT, */
-                && (c == '\r' && state != Quoted)) /* and except CR inside quoted fields */
-        {;} /* then ignore input */
-        else T_T: switch (state) { /* else filter through the transition table */
+                && (c == '\r' && state != Quoted)) /* and except CR inside quoted fields, */
+        {;} /* then ignore input, */
+        /* else filter through the transition table */
+        else T_T: switch (state) {
             when StartRecord:
                 assert(nf==1);
                 switch (c) {
-#               if ALLOW_EMPTY_LINES
-                    when '\n':  ++nl; ++nr; print(EMPTY);
-#               else
-                    when '\n':  ++nl; error("unexpected empty line");
-#               endif
+                    when '\n':  if (ALLOW_EMPTY_LINES) {
+                                    ++nl; ++nr; print(EMPTY);
+                                } else {
+                                    ++nl; error("unexpected empty line");
+                                }
                     when ',':   ++nf; print(NULL_FIELD1); go(StartField);
                     otherwise:  print(OPEN_BRACKET); go(StartField);
                                 goto T_T; /* direct transition to StartField */
                 }
             when StartField:
-#           if IGNORE_BLANKS_BEFORE_FIELDS
-                if (isblank(c)) {;} else
-#           endif
-                switch (c) {
+                if (IGNORE_BLANKS_BEFORE_FIELDS && isblank(c)) {
+                    ; /* ignore `c` */
+                } else switch (c) {
                     when ',':   ++nf; print(NULL_FIELD);
                     when '\n':  ++nl; ++nr; nf=1; print(NULL_FIELDn); go(StartRecord);
                     when '"':   print(DOUBLE_QUOTE); go(Quoted);
@@ -187,10 +185,9 @@ extern int csv2json(FILE *input, FILE *output)
                     otherwise:  put(c);
                 }
             when Closing:
-#           if IGNORE_BLANKS_AFTER_QUOTED_FIELDS
-                if (isblank(c)) {;} else
-#           endif
-                switch (c) {
+                if (IGNORE_BLANKS_AFTER_QUOTED_FIELDS && isblank(c)) {
+                    ; /* ignore `c` */
+                } else switch (c) {
                     when ',':   ++nf; print(COMMA); go(StartField);
                     when '\n':  ++nl; ++nr; nf=1; print(CLOSE_BRACKET); go(StartRecord);
                     when '"':   print(ESCAPED_DQ); go(Quoted); 
@@ -217,12 +214,12 @@ EXIT:
             assert(imply(nc!=0, old_c=='\n'));
             if (nc == 0) {
                 assert(nl==1 && nf==1 && nr==1);
-#           if ALLOW_EMPTY_LINES
-                print(EMPTY);
-#           else
-                nl=nr=nf=0;
-                errmsg = "unexpected empty input";
-#           endif
+                if (ALLOW_EMPTY_LINES) {
+                    print(EMPTY);
+                } else {
+                    nl=nr=nf=0;
+                    errmsg = "unexpected empty input";
+                }
             }
         when StartField:    print(NULL_FIELDn);
         when Plain:         print(CLOSE_BRACKET);
